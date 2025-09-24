@@ -1,0 +1,493 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Video Compressor — Bright Blue Tools</title>
+<style>
+  :root{
+    --blue:#1073ff; --blue-2:#0b5ed7; --bg:#f8fbff; --card:#ffffff; --muted:#6b7280;
+    font-family:Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+    --radius:12px;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:linear-gradient(180deg,var(--bg),#fff); color:#0f1724;
+    padding:18px; min-height:100vh; display:flex; align-items:center; justify-content:center;
+  }
+  .container{ width:100%; max-width:980px; background:var(--card); border-radius:var(--radius);
+    padding:18px; box-shadow:0 8px 30px rgba(16,115,255,0.06); border:1px solid rgba(16,115,255,0.06);}
+  header{ display:flex; gap:12px; align-items:center; margin-bottom:12px; }
+  .logo{ width:56px;height:56px;border-radius:10px;background:linear-gradient(135deg,var(--blue),var(--blue-2));
+    display:flex;align-items:center;justify-content:center;color:white;font-weight:700;font-size:20px; }
+  h1{ margin:0; font-size:20px; }
+  p.lead{ margin:0; color:var(--muted); font-size:13px; }
+  .grid{ display:grid; grid-template-columns:1fr 360px; gap:16px; margin-top:14px; }
+  @media (max-width:920px){ .grid{ grid-template-columns:1fr; } }
+
+  .drop{ border:2px dashed rgba(16,115,255,0.10); border-radius:10px; padding:14px; min-height:280px;
+    display:flex; flex-direction:column; gap:10px; align-items:center; justify-content:center; background:linear-gradient(180deg, rgba(16,115,255,0.02), transparent); text-align:center;}
+  .drop.dragover{ border-color:var(--blue); box-shadow:0 8px 30px rgba(16,115,255,0.06) inset; }
+  video#srcPreview, video#outPreview{ max-width:100%; border-radius:8px; background:#000; display:block; }
+  .controls-row{ display:flex; gap:8px; flex-wrap:wrap; justify-content:center; margin-top:8px; }
+  .btn{ background:var(--blue); color:white; padding:10px 14px; border-radius:10px; border:0; cursor:pointer; font-weight:600; box-shadow:0 6px 18px rgba(16,115,255,0.12); }
+  .btn.ghost{ background:transparent; color:var(--blue); border:1px solid rgba(16,115,255,0.12); box-shadow:none; }
+  .small{ font-size:12px; color:var(--muted); }
+
+  .card{ border-radius:10px; padding:12px; border:1px solid rgba(11,94,215,0.04); background:linear-gradient(180deg,#fff,#fbfdff); }
+  label{ display:block; font-size:13px; color:#0f1724; margin-bottom:6px; font-weight:600; }
+  input[type="range"]{ width:100%; }
+  select,input[type="number"],input[type="text"]{ width:100%; padding:8px 10px; border-radius:8px; border:1px solid #e6eefb; }
+  footer{ margin-top:12px; display:flex; gap:8px; justify-content:space-between; align-items:center; flex-wrap:wrap; }
+
+  .stat{ font-weight:700; font-size:13px; }
+  .info-pill{ background:#f1f8ff; padding:8px 10px; border-radius:999px; font-size:13px; color:var(--blue-2); border:1px solid rgba(16,115,255,0.06); }
+
+  .muted{ color:var(--muted); font-size:13px; }
+  .warn{ color:#b45309; font-weight:700; }
+
+  /* small helper */
+  .flex{ display:flex; gap:8px; align-items:center; }
+  .meta{ display:flex; gap:8px; flex-wrap:wrap; justify-content:center; margin-top:8px; }
+</style>
+</head>
+<body>
+  <div class="container" role="main">
+    <header>
+      <div class="logo">Vid</div>
+      <div>
+        <h1>Video Compressor</h1>
+        <p class="lead">Upload a video → choose width / fps / bitrate → compress in-browser → download (WebM output).</p>
+      </div>
+    </header>
+
+    <div class="grid">
+      <!-- LEFT: drop & preview -->
+      <div>
+        <div id="drop" class="drop" aria-label="Video upload dropzone" tabindex="0">
+          <div id="placeholder">
+            <p style="margin:0;font-weight:700;color:var(--blue-2)">Drop or choose a video</p>
+            <p class="small" style="margin-top:6px;">Supported input: MP4/WebM/OGG. Output will usually be WebM (VP8/VP9).</p>
+            <div class="controls-row" style="margin-top:12px;">
+              <button id="pickBtn" class="btn">Choose Video</button>
+              <button id="clearBtn" class="btn ghost">Clear</button>
+            </div>
+          </div>
+
+          <video id="srcPreview" controls style="display:none"></video>
+          <div id="info" style="display:none; text-align:center;">
+            <div class="meta">
+              <div class="info-pill">Original: <span id="origSize">—</span></div>
+              <div class="info-pill">Duration: <span id="origDur">—</span></div>
+              <div class="info-pill">Resolution: <span id="origRes">—</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div style="display:flex;gap:8px;margin-top:12px;align-items:center;justify-content:center;">
+          <button id="compressBtn" class="btn" style="display:none">Start Compress</button>
+          <a id="downloadBtn" class="btn" style="display:none" role="button">Download Compressed</a>
+        </div>
+
+        <div id="outArea" style="margin-top:12px; display:none; text-align:center;">
+          <h3 style="margin:8px 0 6px 0">Compressed Preview</h3>
+          <video id="outPreview" controls></video>
+          <div class="meta" style="margin-top:10px;">
+            <div class="info-pill">Compressed: <span id="compSize">—</span></div>
+            <div class="info-pill">Saved: <span id="savedPct">—</span></div>
+            <div class="info-pill">Format: <span id="outFmt">webm</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT: settings -->
+      <aside class="card" aria-label="Compression controls">
+        <div class="field">
+          <label for="maxWidth">Max width (px) — leave blank to keep source width</label>
+          <input id="maxWidth" type="number" min="1" placeholder="e.g. 1280" />
+          <div class="small muted" style="margin-top:6px;">The video will be scaled proportionally to this width.</div>
+        </div>
+
+        <div class="field">
+          <label for="fps">Output FPS</label>
+          <input id="fps" type="number" min="1" max="60" value="25" />
+          <div class="small muted" style="margin-top:6px;">Lower fps reduces file size but may make motion less smooth.</div>
+        </div>
+
+        <div class="field">
+          <label for="bitrate">Target bitrate approx. (kbps)</label>
+          <input id="bitrate" type="number" min="64" value="800" />
+          <div class="small muted" style="margin-top:6px;">This requests an approximate bitrate for MediaRecorder (not guaranteed).</div>
+        </div>
+
+        <div class="field">
+          <label for="codec">Preferred mimeType / codec (optional)</label>
+          <input id="codec" type="text" placeholder='e.g. "video/webm;codecs=vp8" or leave blank' />
+          <div class="small muted" style="margin-top:6px;">If your browser supports it, specify a mimeType. Otherwise leave blank.</div>
+        </div>
+
+        <div class="field">
+          <label>Quick presets</label>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button class="btn ghost" data-preset='{"w":1920,"fps":30,"b":3000}'>1080p High</button>
+            <button class="btn ghost" data-preset='{"w":1280,"fps":25,"b":1500}'>720p Web</button>
+            <button class="btn ghost" data-preset='{"w":854,"fps":24,"b":800}'>480p Mobile</button>
+            <button class="btn ghost" data-preset='{"w":640,"fps":20,"b":500}'>Small</button>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>Notes</label>
+          <div class="small muted">Compression is performed locally in your browser. No video is uploaded to a server. For best cross-browser support use Chrome/Edge/Firefox on desktop.</div>
+        </div>
+
+        <footer>
+          <div class="small muted">Browser-based — output is usually WebM (VP8/VP9).</div>
+          <div style="display:flex;gap:8px;">
+            <button id="aboutBtn" class="btn ghost">About</button>
+          </div>
+        </footer>
+      </aside>
+    </div>
+  </div>
+
+<script>
+/*
+  Video Compressor - single-file
+  Approach:
+   - Load source video into <video> element (muted).
+   - Play it invisibly and draw frames to a canvas at desired width.
+   - Use canvas.captureStream(fps) and MediaRecorder to create compressed WebM.
+   - Allow specifying approximate bitrate via bitsPerSecond option.
+  Limitations:
+   - Output typically WebM. MP4 not produced natively.
+   - MediaRecorder's bitrate and codec support are browser-dependent.
+*/
+
+(function(){
+  const pickBtn = document.getElementById('pickBtn');
+  const clearBtn = document.getElementById('clearBtn');
+  const drop = document.getElementById('drop');
+  const srcPreview = document.getElementById('srcPreview');
+  const outPreview = document.getElementById('outPreview');
+  const compressBtn = document.getElementById('compressBtn');
+  const downloadBtn = document.getElementById('downloadBtn');
+  const origSizeEl = document.getElementById('origSize');
+  const origDurEl = document.getElementById('origDur');
+  const origResEl = document.getElementById('origRes');
+  const compSizeEl = document.getElementById('compSize');
+  const savedPctEl = document.getElementById('savedPct');
+  const outArea = document.getElementById('outArea');
+  const info = document.getElementById('info');
+  const maxWidthInput = document.getElementById('maxWidth');
+  const fpsInput = document.getElementById('fps');
+  const bitrateInput = document.getElementById('bitrate');
+  const codecInput = document.getElementById('codec');
+  const aboutBtn = document.getElementById('aboutBtn');
+
+  const presetButtons = document.querySelectorAll('[data-preset]');
+
+  let originalFile = null;
+  let originalSize = 0;
+  let duration = 0;
+  let originalWidth = 0;
+  let originalHeight = 0;
+
+  let recordedChunks = [];
+  let mediaRecorder = null;
+  let canvasStream = null;
+  let canvas = null;
+  let drawInterval = null;
+  let compressedBlob = null;
+
+  function bytesToMB(b){ return (b/1024/1024).toFixed(2) + ' MB'; }
+  function bytesToKB(b){ return (b/1024).toFixed(1) + ' KB'; }
+
+  function handleFile(file){
+    if(!file) return;
+    if(!file.type.startsWith('video/')) { alert('Please select a video file.'); return; }
+    originalFile = file;
+    originalSize = file.size;
+    const url = URL.createObjectURL(file);
+    srcPreview.src = url;
+    srcPreview.style.display = 'block';
+    srcPreview.controls = true;
+    info.style.display = 'block';
+    outArea.style.display = 'none';
+    compressBtn.style.display = 'inline-block';
+    downloadBtn.style.display = 'none';
+    origSizeEl.textContent = bytesToMB(originalSize);
+    // load metadata to get duration & resolution
+    srcPreview.onloadedmetadata = function(){
+      duration = srcPreview.duration || 0;
+      originalWidth = srcPreview.videoWidth || 0;
+      originalHeight = srcPreview.videoHeight || 0;
+      origDurEl.textContent = (duration ? duration.toFixed(1) + ' s' : '—');
+      origResEl.textContent = originalWidth + '×' + originalHeight;
+      // prefill max width
+      if(!maxWidthInput.value) maxWidthInput.value = originalWidth;
+    };
+  }
+
+  // Choose file button
+  pickBtn.addEventListener('click', ()=>{
+    const inp = document.createElement('input');
+    inp.type='file'; inp.accept='video/*';
+    inp.onchange = e => {
+      const f = e.target.files[0];
+      handleFile(f);
+    };
+    inp.click();
+  });
+
+  // Clear
+  clearBtn.addEventListener('click', ()=>{
+    originalFile = null;
+    originalSize = 0;
+    srcPreview.pause();
+    srcPreview.src = '';
+    srcPreview.style.display = 'none';
+    info.style.display = 'none';
+    compressBtn.style.display = 'none';
+    outArea.style.display = 'none';
+    downloadBtn.style.display = 'none';
+    if(canvas){ canvas.remove(); canvas = null; }
+    if(mediaRecorder){ try { mediaRecorder.stop(); } catch(e){} mediaRecorder = null; }
+  });
+
+  // Drag/drop UI
+  ;['dragenter','dragover'].forEach(ev=>{
+    drop.addEventListener(ev, e => { e.preventDefault(); e.stopPropagation(); drop.classList.add('dragover'); });
+  });
+  ;['dragleave','drop'].forEach(ev=>{
+    drop.addEventListener(ev, e => { e.preventDefault(); e.stopPropagation(); drop.classList.remove('dragover'); });
+  });
+  drop.addEventListener('drop', e => {
+    const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+    handleFile(f);
+  });
+  drop.addEventListener('click', ()=> pickBtn.click());
+
+  // Quick presets
+  presetButtons.forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      try{
+        const p = JSON.parse(btn.getAttribute('data-preset'));
+        maxWidthInput.value = p.w;
+        fpsInput.value = p.fps;
+        bitrateInput.value = p.b;
+      }catch(e){}
+    });
+  });
+
+  // About
+  aboutBtn.addEventListener('click', ()=> {
+    alert('Video Compressor — client-side. Output typically WebM (VP8/VP9). MP4 not produced natively. Large videos may be slow on mobile devices.');
+  });
+
+  // Compression core
+  compressBtn.addEventListener('click', async ()=>{
+    if(!originalFile){ alert('No video loaded.'); return; }
+    // Check API support
+    if(!('mediaDevices' in navigator) && !('MediaRecorder' in window)) {
+      alert('Your browser does not support MediaRecorder or required APIs. Try Chrome/Edge/Firefox desktop.');
+      return;
+    }
+
+    compressBtn.disabled = true;
+    compressBtn.textContent = 'Preparing...';
+
+    // Create canvas and draw loop
+    const desiredWidth = parseInt(maxWidthInput.value) || originalWidth || 640;
+    const targetFps = Math.min(60, Math.max(1, parseInt(fpsInput.value) || 25));
+    // compute target height maintaining aspect ratio
+    const ratio = (originalWidth && originalHeight) ? (originalHeight / originalWidth) : 9/16;
+    const desiredHeight = Math.round(desiredWidth * ratio);
+
+    // create (or reuse) canvas
+    if(!canvas){
+      canvas = document.createElement('canvas');
+      canvas.style.display = 'none';
+      document.body.appendChild(canvas);
+    }
+    canvas.width = desiredWidth;
+    canvas.height = desiredHeight;
+    const ctx = canvas.getContext('2d');
+
+    // prepare source video element: ensure ready and muted (autoplay policies)
+    srcPreview.muted = true;
+    srcPreview.pause();
+    // seek to start
+    try{ srcPreview.currentTime = 0; } catch(e){}
+    await srcPreview.play().catch(()=>{}); // attempt autoplay; if blocked, user can click to play
+
+    // create stream from canvas with target fps
+    canvasStream = canvas.captureStream(targetFps);
+
+    // choose mimeType / bits
+    const userCodec = (codecInput.value || '').trim();
+    let mimeType = '';
+    if(userCodec){
+      mimeType = userCodec;
+    } else {
+      // prefer webm; check support
+      if(MediaRecorder.isTypeSupported('video/webm;codecs=vp9')) mimeType = 'video/webm;codecs=vp9';
+      else if(MediaRecorder.isTypeSupported('video/webm;codecs=vp8')) mimeType = 'video/webm;codecs=vp8';
+      else if(MediaRecorder.isTypeSupported('video/webm')) mimeType = 'video/webm';
+      else mimeType = '';
+    }
+
+    const kbps = Math.max(64, parseInt(bitrateInput.value) || 800);
+    const bitsPerSecond = kbps * 1000;
+
+    const options = {};
+    if(mimeType) options.mimeType = mimeType;
+    options.bitsPerSecond = bitsPerSecond;
+
+    // setup MediaRecorder
+    try{
+      recordedChunks = [];
+      mediaRecorder = new MediaRecorder(canvasStream, options);
+    } catch(err){
+      console.error('MediaRecorder error', err);
+      alert('Could not create MediaRecorder with the selected options. Try a different codec or lower bitrate.');
+      compressBtn.disabled = false;
+      compressBtn.textContent = 'Start Compress';
+      return;
+    }
+
+    mediaRecorder.ondataavailable = e => {
+      if(e.data && e.data.size > 0) recordedChunks.push(e.data);
+    };
+
+    mediaRecorder.onstop = async () => {
+      compressedBlob = new Blob(recordedChunks, { type: options.mimeType || 'video/webm' });
+      const url = URL.createObjectURL(compressedBlob);
+      outPreview.src = url;
+      outPreview.style.display = 'block';
+      outArea.style.display = 'block';
+      downloadBtn.style.display = 'inline-block';
+      downloadBtn.href = url;
+      // filename
+      const base = (originalFile && originalFile.name) ? originalFile.name.replace(/\.[^/.]+$/, "") : 'video';
+      const ext = (options.mimeType && options.mimeType.includes('webm')) ? 'webm' : 'webm';
+      downloadBtn.download = `${base}-compressed.${ext}`;
+
+      // sizes
+      compSizeEl.textContent = bytesToMB(compressedBlob.size);
+      const saved = originalSize ? ((1 - (compressedBlob.size / originalSize)) * 100) : 0;
+      savedPctEl.textContent = (saved>0 ? saved.toFixed(1) + '%' : '0%');
+      document.getElementById('outFmt').textContent = ext;
+
+      compressBtn.disabled = false;
+      compressBtn.textContent = 'Start Compress';
+      // cleanup: stop drawing loop
+      if(drawInterval) { clearInterval(drawInterval); drawInterval = null; }
+      try { srcPreview.pause(); } catch(e){}
+      // revoke object url later if needed (left for download)
+    };
+
+    // start recording
+    try{
+      mediaRecorder.start(1000); // collect data every 1s
+    } catch (e){
+      console.error('start failed', e);
+      alert('Failed to start recording: ' + e.message);
+      compressBtn.disabled = false;
+      compressBtn.textContent = 'Start Compress';
+      return;
+    }
+
+    // draw frames at targetFps using setInterval for consistent rate
+    const drawMs = Math.round(1000 / targetFps);
+    drawInterval = setInterval(() => {
+      try{
+        // draw current video frame scaled to canvas
+        ctx.fillStyle = "#000";
+        ctx.fillRect(0,0,canvas.width, canvas.height);
+        // drawImage with cover letterbox/pillarbox to maintain aspect ratio
+        const sw = srcPreview.videoWidth || srcPreview.width;
+        const sh = srcPreview.videoHeight || srcPreview.height;
+        if(sw && sh){
+          // compute scale to fit
+          const srcRatio = sw / sh;
+          const destRatio = canvas.width / canvas.height;
+          let dw=canvas.width, dh=canvas.height, sx=0, sy=0, sWidth=sw, sHeight=sh;
+          if(srcRatio > destRatio){
+            // source wider -> crop sides
+            sHeight = sh;
+            sWidth = Math.round(sh * destRatio);
+            sx = Math.round((sw - sWidth)/2);
+          } else {
+            // source taller -> crop top/bottom
+            sWidth = sw;
+            sHeight = Math.round(sw / destRatio);
+            sy = Math.round((sh - sHeight)/2);
+          }
+          ctx.drawImage(srcPreview, sx, sy, sWidth, sHeight, 0, 0, dw, dh);
+        } else {
+          // fallback draw full element
+          ctx.drawImage(srcPreview, 0, 0, canvas.width, canvas.height);
+        }
+      }catch(e){
+        // drawing may fail if video not ready yet
+      }
+    }, drawMs);
+
+    // determine when to stop: when source video ends
+    srcPreview.onended = () => {
+      // stop recorder
+      try{
+        if(mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
+      }catch(e){}
+    };
+
+    // also set a maximum: if source has duration, stop after it + small buffer
+    if(duration && duration > 0){
+      setTimeout(()=> {
+        try{
+          if(mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
+        }catch(e){}
+      }, Math.ceil((duration + 0.5) * 1000));
+    }
+
+    compressBtn.textContent = 'Recording...';
+    // Ensure video plays while recording — autoplay policies might pause. If paused, ask user to resume.
+    try{
+      await srcPreview.play();
+    } catch(playError){
+      // autoplay blocked - ask user to click play
+      compressBtn.textContent = 'Click to Record (play blocked)';
+      compressBtn.disabled = false;
+      alert('Autoplay blocked. Please click play on the source video to allow recording.');
+    }
+  });
+
+  // Download anchor click fallback
+  downloadBtn.addEventListener('click', (e)=>{
+    if(!compressedBlob){
+      e.preventDefault();
+      alert('No compressed video available yet. Click "Start Compress" first.');
+    }
+  });
+
+  // Accessibility: keyboard clear via Escape
+  document.addEventListener('keydown', e => {
+    if(e.key === 'Escape') clearBtn.click();
+  });
+
+  // feature detection UI hints
+  window.addEventListener('load', ()=>{
+    if(!('MediaRecorder' in window) || !HTMLCanvasElement.prototype.captureStream){
+      const warn = document.createElement('div');
+      warn.className = 'warn';
+      warn.style.marginTop = '10px';
+      warn.textContent = 'Warning: Your browser may not support the required APIs (MediaRecorder or canvas.captureStream). Use latest Chrome/Edge/Firefox for best results.';
+      document.querySelector('.container').insertBefore(warn, document.querySelector('.container').children[1]);
+    }
+  });
+
+})();
+</script>
+</body>
+</html>l
